@@ -9,6 +9,8 @@ from .theme import (
     DARK_NEUTRALS,
     MANTINE_THEME,
     SPACING,
+    COLORS,
+    DELTA_COLORS,
     get_plotly_template,
 )
 
@@ -25,7 +27,12 @@ MIN_MONTH_VALUE = f"{MIN_YEAR}-{MIN_MONTH:02d}-01"
 def create_metric_card(title, value_id, subtitle_id=None, icon=None, sparkline_id=None):
     """
     Create a KPI card with neutral background, right-aligned value, and optional sparkline.
-    Delta icons use brand colors (teal/raspberry/gold) without background fill.
+    Following brand guidelines:
+    - Background: Surface (neutral)
+    - Title: Text muted
+    - Value: Text primary
+    - Spacing: 16px internal padding, 12px between title/value/delta
+    - Number alignment: Right-align numeric values
     """
     sparkline = (
         dcc.Graph(
@@ -50,12 +57,12 @@ def create_metric_card(title, value_id, subtitle_id=None, icon=None, sparkline_i
                     size="lg",
                     radius="md",
                     variant="light",
-                    color="orange",
+                    color="orange",  # Brand primary accent
                 ),
                 dmc.Box(flex=1),
             ],
             justify="space-between",
-            mb=SPACING['card_padding'] // 2,
+            mb=SPACING['card_internal_gap'],
         ),
         dmc.Text(title, size="xs", c="dimmed", fw=500, mb=4),
         dmc.Group(
@@ -89,7 +96,7 @@ def create_metric_card(title, value_id, subtitle_id=None, icon=None, sparkline_i
                     ),
                 ],
                 gap=4,
-                mt=SPACING['card_padding'] // 2,
+                mt=SPACING['card_internal_gap'],
                 justify="space-between",
             )
         )
@@ -186,7 +193,7 @@ layout = dmc.MantineProvider(
                         mb="sm"
                     ),
 
-                    # KPI Cards Row
+                    # KPI Cards Row - Using brand neutral surface background
                     dmc.Grid(
                         [
                             dmc.GridCol(
@@ -196,7 +203,6 @@ layout = dmc.MantineProvider(
                                     "dsat-sans-value",
                                     icon="material-symbols:sentiment-dissatisfied",
                                     sparkline_id="dsat-spark",
-                                    color=COLORS['danger']
                                 ),
                                 span={"base": 12, "sm": 6, "xl": 3}
                             ),
@@ -207,7 +213,6 @@ layout = dmc.MantineProvider(
                                     "vol-brut-sans-value",
                                     icon="material-symbols:database",
                                     sparkline_id="vol-brut-spark",
-                                    color=COLORS['primary']
                                 ),
                                 span={"base": 12, "sm": 6, "xl": 3}
                             ),
@@ -218,7 +223,6 @@ layout = dmc.MantineProvider(
                                     "vol-note-sans-value",
                                     icon="material-symbols:star-rate",
                                     sparkline_id="vol-note-spark",
-                                    color=COLORS['success']
                                 ),
                                 span={"base": 12, "sm": 6, "xl": 3}
                             ),
@@ -545,7 +549,8 @@ layout = dmc.MantineProvider(
             )
         ],
         fluid=True,
-        p={"base": "md", "lg": "xl"},
-        style={"background": COLORS['background'], "minHeight": "100vh"}
+        size=1280,  # Container max width per brand guidelines
+        p={"base": SPACING['page_padding_mobile'], "lg": SPACING['page_padding_desktop']},
+        style={"background": LIGHT_NEUTRALS['background'], "minHeight": "100vh"}
     )
 )

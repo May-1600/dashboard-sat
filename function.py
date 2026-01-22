@@ -6,18 +6,29 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
+from .theme import (
+    BRAND_COLORS,
+    SERIES_COLORS,
+    DELTA_COLORS,
+    LIGHT_NEUTRALS,
+    DARK_NEUTRALS,
+    get_chart_colors,
+    get_heatmap_colorscale,
+)
+
 #region Config, chargement et mise en cache des données
 query_partitioned_dataset = lambda x: x  # TODO: à remplacer par la vraie fonction
 
+# Use brand colors for charts - mapped to semantic meaning
 COLORS = {
-    "primary": "#2563eb",
-    "success": "#10b981",
-    "warning": "#f59e0b",
-    "danger": "#ef4444",
-    "teal": "#14b8a6",
-    "purple": "#8b5cf6",
-    "orange": "#f97316",
-    "gray": "#6b7280",
+    "primary": BRAND_COLORS["primary"],      # Orange #FF9A5B - brand accent
+    "success": BRAND_COLORS["positive"],     # Teal #7FD1C3 - hors récla
+    "warning": BRAND_COLORS["warning"],      # Gold #F3C969
+    "danger": BRAND_COLORS["negative"],      # Raspberry #E07A8E - récla
+    "teal": BRAND_COLORS["positive"],        # Teal #7FD1C3
+    "purple": BRAND_COLORS["secondary"],     # Lavender #B9A7F8
+    "orange": BRAND_COLORS["primary"],       # Orange #FF9A5B
+    "gray": LIGHT_NEUTRALS["text_muted"],    # #5B677A
 }
 def cache_ttl(clear_time: int):
     """
@@ -392,6 +403,11 @@ def build_delta_card(df: pd.DataFrame, current_year: int, current_month: int, ds
     """
     Calcule les informations d'évolution de DSAT vs le mois précédent
     pour alimenter la carte 'delta DSAT'.
+
+    Brand colors for deltas:
+    - Positive (improvement): Teal
+    - Negative (degradation): Raspberry
+    - Warning/Stable: Gold
     """
     try:
         prev_year, prev_month = previous_period(current_year, current_month)
@@ -403,22 +419,25 @@ def build_delta_card(df: pd.DataFrame, current_year: int, current_month: int, ds
         delta_display = f"{sign}{dsat_diff:.2f}"
 
         if dsat_diff < -0.5:
-            delta_color = "red"
-            icon_color = "red"
+            # Dégradation - use raspberry (negative)
+            delta_color = "raspberry"
+            icon_color = "raspberry"
             badge_text = "Dégradation"
             trend_text = (
                 f"La DSAT a diminué de {abs(dsat_diff):.2f} points vs le mois précédent"
             )
         elif dsat_diff > 0.5:
-            delta_color = "green"
-            icon_color = "green"
+            # Amélioration - use teal (positive)
+            delta_color = "teal"
+            icon_color = "teal"
             badge_text = "Amélioration"
             trend_text = (
                 f"La DSAT a augmenté de {abs(dsat_diff):.2f} points vs le mois précédent"
             )
         else:
-            delta_color = "gray"
-            icon_color = "blue"
+            # Stable - use gold (warning/neutral)
+            delta_color = "gold"
+            icon_color = "orange"
             badge_text = "Stable"
             trend_text = "La DSAT reste stable par rapport au mois précédent"
 
@@ -435,6 +454,7 @@ def build_delta_card(df: pd.DataFrame, current_year: int, current_month: int, ds
 #region Graphiques communs (placeholders, erreurs)
 def build_empty_spark_figure():
     """Figure vide standard pour les cas d'erreur pour les sparklines."""
+    chart_colors = get_chart_colors("light")
     fig = go.Figure()
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
@@ -442,12 +462,14 @@ def build_empty_spark_figure():
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
         paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
     )
     return fig
 
 
 def build_error_placeholder_figure(message="Erreur de chargement des données"):
     """Figure placeholder standard pour les erreurs sur les graphs principaux."""
+    chart_colors = get_chart_colors("light")
     fig = go.Figure()
     fig.add_annotation(
         text=message,
@@ -456,15 +478,23 @@ def build_error_placeholder_figure(message="Erreur de chargement des données"):
         y=0.5,
         xref="paper",
         yref="paper",
-        font=dict(size=14, color="gray"),
+        font=dict(size=14, color=chart_colors["text_muted"]),
     )
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=400)
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=400,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
+    )
     return fig
 #endregion
 
 #region Graphique principal (trend) et sparklines
-def _configure_sparkline(fig, values, color=COLORS["primary"], lock_zero=False):
-    """Configure une sparkline compacte avec un design moderne."""
+def _configure_sparkline(fig, values, color=None, lock_zero=False):
+    """Configure une sparkline compacte avec un design moderne utilisant les couleurs de la marque."""
+    if color is None:
+        color = BRAND_COLORS["primary"]
+
     vmin = float(min(values))
     vmax = float(max(values))
     if lock_zero and vmin >= 0:
@@ -482,6 +512,8 @@ def _configure_sparkline(fig, values, color=COLORS["primary"], lock_zero=False):
         fillcolor=f"rgba{rgb + (0.1,)}",
     )
 
+    chart_colors = get_chart_colors("light")
+
     fig.update_layout(
         height=50,
         margin=dict(b=0, t=0, l=0, r=0),
@@ -494,7 +526,8 @@ def _configure_sparkline(fig, values, color=COLORS["primary"], lock_zero=False):
             showline=False,
             showticklabels=False,
         ),
-        plot_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
+        paper_bgcolor="rgba(0,0,0,0)",
         font=dict(
             family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
         ),
@@ -576,10 +609,11 @@ def build_metric_sparklines(df: pd.DataFrame, current_period=None, n_periods=12)
         )
     )
 
-    fig_brut = _configure_sparkline(fig_brut, brut_vals, color=COLORS["primary"])
-    fig_note = _configure_sparkline(fig_note, note_vals, color=COLORS["success"])
+    # Use brand colors: Primary orange for volume, Teal for positive metrics
+    fig_brut = _configure_sparkline(fig_brut, brut_vals, color=BRAND_COLORS["primary"])
+    fig_note = _configure_sparkline(fig_note, note_vals, color=BRAND_COLORS["positive"])
     fig_sat = _configure_sparkline(
-        fig_sat, sat_vals, color=COLORS["success"], lock_zero=False
+        fig_sat, sat_vals, color=BRAND_COLORS["positive"], lock_zero=False
     )
 
     return fig_brut, fig_note, fig_sat
@@ -589,8 +623,14 @@ def build_main_graph():
     """
     Construit le graphique principal d'évolution DSAT avec / sans réclamation
     + volume brut en barres (axe secondaire).
+
+    Brand colors applied:
+    - DSAT sans récla (Hors récla): Teal #7FD1C3
+    - DSAT avec récla (Récla): Raspberry #E07A8E
+    - Volume bars: Primary orange with low opacity
     """
     df = get_data_bouchon()
+    chart_colors = get_chart_colors("light")
 
     ts_no = select_timeseries(
         df, "globale_distinct_faire_recla", "Globale"
@@ -626,14 +666,16 @@ def build_main_graph():
     fig = go.Figure()
     bar_width = 0.8
 
-    # Volume brut en barres (fond)
+    # Volume brut en barres (fond) - using brand primary with low opacity
     if "vol_brut" in merged.columns:
+        # Convert brand primary to rgba with low opacity
+        primary_rgb = tuple(int(BRAND_COLORS["primary"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
         fig.add_trace(
             go.Bar(
                 x=x_idx,
                 y=merged["vol_brut"],
                 name="Volume brut",
-                marker=dict(color="rgba(59, 130, 246, 0.12)"),
+                marker=dict(color=f"rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.12)"),
                 yaxis="y2",
                 width=bar_width,
                 hovertemplate="%{customdata}<br>Volume brut: %{y:,.0f}<extra></extra>",
@@ -641,13 +683,13 @@ def build_main_graph():
             )
         )
 
-    # Zone entre les deux courbes DSAT
+    # Zone entre les deux courbes DSAT - using brand colors for fill
     fig.add_trace(
         go.Scatter(
             x=np.concatenate([x_idx, x_idx[::-1]]),
             y=np.concatenate([merged["dsat_no"], merged["dsat_re"][::-1]]),
             fill="toself",
-            fillcolor="rgba(251, 146, 60, 0.15)",
+            fillcolor="rgba(224, 122, 142, 0.15)",  # Raspberry with low opacity
             line=dict(width=0),
             showlegend=False,
             hoverinfo="skip",
@@ -655,40 +697,40 @@ def build_main_graph():
         )
     )
 
-    # Courbe DSAT sans récla
+    # Courbe DSAT sans récla (Hors récla) - Teal
     fig.add_trace(
         go.Scatter(
             x=x_idx,
             y=merged["dsat_no"],
             mode="lines+markers",
-            name="DSAT sans récla",
-            line=dict(color=COLORS["teal"], width=3),
+            name="Hors récla",
+            line=dict(color=SERIES_COLORS["hors_recla"], width=3),
             marker=dict(
                 size=8,
-                color=COLORS["teal"],
+                color=SERIES_COLORS["hors_recla"],
                 line=dict(width=2, color="white"),
             ),
-            hovertemplate="%{customdata}<br>DSAT sans récla: %{y:.2f}<extra></extra>",
+            hovertemplate="%{customdata}<br>DSAT hors récla: %{y:.2f}<extra></extra>",
             customdata=periods,
         )
     )
 
-    # Courbe DSAT avec récla
+    # Courbe DSAT avec récla (Récla) - Raspberry
     fig.add_trace(
         go.Scatter(
             x=x_idx,
             y=merged["dsat_re"],
             mode="lines+markers",
-            name="DSAT avec récla",
-            line=dict(color=COLORS["orange"], width=3),
+            name="Récla",
+            line=dict(color=SERIES_COLORS["recla"], width=3),
             marker=dict(
                 size=8,
-                color=COLORS["orange"],
+                color=SERIES_COLORS["recla"],
                 line=dict(width=2, color="white"),
             ),
             hovertemplate=(
                 "%{customdata[0]}<br>"
-                "DSAT avec récla: %{y:.2f}<br>"
+                "DSAT récla: %{y:.2f}<br>"
                 "Écart: %{customdata[1]:.2f}<extra></extra>"
             ),
             customdata=np.column_stack([periods, merged["delta"]]),
@@ -705,17 +747,17 @@ def build_main_graph():
             tickvals=x_idx,
             ticktext=periods,
             tickangle=-45,
-            tickfont=dict(size=10, color="#6b7280"),
+            tickfont=dict(size=10, color=chart_colors["text_muted"]),
             range=[x_idx[0], x_idx[-1]],
         ),
         yaxis=dict(
             title="DSAT",
             title_font_size=12,
-            title_font_color="#374151",
+            title_font_color=chart_colors["text_muted"],
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)",
+            gridcolor=chart_colors["gridcolor"],
             zeroline=True,
-            zerolinecolor="rgba(0,0,0,0.2)",
+            zerolinecolor=chart_colors["border"],
         ),
         yaxis2=dict(
             overlaying="y",
@@ -724,12 +766,13 @@ def build_main_graph():
             showticklabels=True,
             title="Volume brut",
             title_font_size=11,
-            title_font_color="#6b7280",
+            title_font_color=chart_colors["text_muted"],
         ),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color=chart_colors["text_color"],
         ),
         legend=dict(
             orientation="h",
@@ -738,7 +781,7 @@ def build_main_graph():
             xanchor="right",
             x=1,
             bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e5e7eb",
+            bordercolor=chart_colors["border"],
             borderwidth=1,
         ),
         hovermode="x unified",
@@ -750,9 +793,17 @@ def build_main_graph():
 
 #region Graphiques des onglets (1, 2, 3)
 def build_fig_dumbbell(df_agg: pd.DataFrame, top_n=12, sort_by="dsat_sans"):
-    """Graphique 'dumbbell' comparant DSAT total vs DSAT sans réclamation."""
+    """
+    Graphique 'dumbbell' comparant DSAT total vs DSAT sans réclamation.
+
+    Brand colors:
+    - Récla (total): Raspberry #E07A8E
+    - Hors récla (sans): Teal #7FD1C3
+    """
     if df_agg.empty:
         return build_error_placeholder_figure("Aucune donnée disponible")
+
+    chart_colors = get_chart_colors("light")
 
     sort_by = sort_by if sort_by in df_agg.columns else "dsat_sans"
     d = df_agg.sort_values(sort_by, ascending=False).head(top_n).copy()
@@ -765,11 +816,14 @@ def build_fig_dumbbell(df_agg: pd.DataFrame, top_n=12, sort_by="dsat_sans"):
     else:
         msize = 12
 
-    # Segments de connexion
+    # Segments de connexion - using raspberry (negative) with opacity
     x_lines, y_lines = [], []
     for _, r in d.iterrows():
         x_lines += [r["dsat_total"], r["dsat_sans"], None]
         y_lines += [r["ycat"], r["ycat"], None]
+
+    # Convert raspberry to rgba
+    raspberry_rgb = tuple(int(BRAND_COLORS["negative"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
 
     fig = go.Figure()
 
@@ -778,51 +832,53 @@ def build_fig_dumbbell(df_agg: pd.DataFrame, top_n=12, sort_by="dsat_sans"):
             x=x_lines,
             y=y_lines,
             mode="lines",
-            line=dict(color="rgba(251, 146, 60, 0.4)", width=4),
+            line=dict(color=f"rgba({raspberry_rgb[0]}, {raspberry_rgb[1]}, {raspberry_rgb[2]}, 0.4)", width=4),
             showlegend=False,
             hoverinfo="skip",
             name="Écart",
         )
     )
 
+    # Récla (total) - Raspberry
     fig.add_trace(
         go.Scatter(
             x=d["dsat_total"],
             y=y,
             mode="markers",
-            name="DSAT total",
+            name="Récla",
             marker=dict(
-                color=COLORS["orange"],
+                color=SERIES_COLORS["recla"],
                 size=msize,
                 line=dict(width=2, color="white"),
                 symbol="circle",
             ),
             hovertemplate=(
                 "%{y}<br>"
-                "DSAT totale: %{x:.2f}<br>"
-                "Écart (sans - total): %{customdata[0]:.2f}<br>"
+                "DSAT récla: %{x:.2f}<br>"
+                "Écart (hors - récla): %{customdata[0]:.2f}<br>"
                 "Vol. noté: %{customdata[1]:,.0f}<extra></extra>"
             ),
             customdata=d[["delta", "vol_note"]].to_numpy(),
         )
     )
 
+    # Hors récla (sans) - Teal
     fig.add_trace(
         go.Scatter(
             x=d["dsat_sans"],
             y=y,
             mode="markers",
-            name="DSAT sans récla",
+            name="Hors récla",
             marker=dict(
-                color=COLORS["teal"],
+                color=SERIES_COLORS["hors_recla"],
                 size=msize,
                 line=dict(width=2, color="white"),
                 symbol="circle",
             ),
             hovertemplate=(
                 "%{y}<br>"
-                "DSAT sans récla: %{x:.2f}<br>"
-                "Écart (sans - total): %{customdata[0]:.2f}<br>"
+                "DSAT hors récla: %{x:.2f}<br>"
+                "Écart (hors - récla): %{customdata[0]:.2f}<br>"
                 "Vol. noté: %{customdata[1]:,.0f}<extra></extra>"
             ),
             customdata=d[["delta", "vol_note"]].to_numpy(),
@@ -835,11 +891,11 @@ def build_fig_dumbbell(df_agg: pd.DataFrame, top_n=12, sort_by="dsat_sans"):
         xaxis=dict(
             title="DSAT",
             zeroline=True,
-            zerolinecolor="rgba(0,0,0,0.2)",
+            zerolinecolor=chart_colors["border"],
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)",
+            gridcolor=chart_colors["gridcolor"],
         ),
-        yaxis=dict(title=None, showgrid=True),
+        yaxis=dict(title=None, showgrid=True, gridcolor=chart_colors["gridcolor"]),
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -847,22 +903,31 @@ def build_fig_dumbbell(df_agg: pd.DataFrame, top_n=12, sort_by="dsat_sans"):
             xanchor="right",
             x=1,
             bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e5e7eb",
+            bordercolor=chart_colors["border"],
             borderwidth=1,
         ),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color=chart_colors["text_color"],
         ),
     )
 
     return fig
 
 def build_fig_quadrants(df_agg: pd.DataFrame):
-    """Scatter "quadrants" : DSAT sans récla vs volume brut."""
+    """
+    Scatter "quadrants" : DSAT sans récla vs volume brut.
+
+    Brand colors:
+    - Colorscale: Raspberry (low/bad) -> Gold (mid) -> Teal (high/good)
+    - Quadrant fills use brand colors with low opacity
+    """
     if df_agg.empty:
         return build_error_placeholder_figure("Aucune donnée disponible")
+
+    chart_colors = get_chart_colors("light")
 
     d = df_agg.copy()
     x = d["dsat_sans"].astype(float)
@@ -872,6 +937,10 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
 
     fig = go.Figure()
 
+    # Convert brand colors to rgba for quadrant fills
+    raspberry_rgb = tuple(int(BRAND_COLORS["negative"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+    teal_rgb = tuple(int(BRAND_COLORS["positive"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+
     # Zones des quadrants
     fig.add_shape(
         type="rect",
@@ -879,7 +948,7 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
         x1=x_med,
         y0=y_med,
         y1=y.max(),
-        fillcolor="rgba(239, 68, 68, 0.05)",
+        fillcolor=f"rgba({raspberry_rgb[0]}, {raspberry_rgb[1]}, {raspberry_rgb[2]}, 0.05)",
         line=dict(width=0),
         layer="below",
     )
@@ -889,19 +958,19 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
         x1=x.max(),
         y0=y_med,
         y1=y.max(),
-        fillcolor="rgba(16, 185, 129, 0.05)",
+        fillcolor=f"rgba({teal_rgb[0]}, {teal_rgb[1]}, {teal_rgb[2]}, 0.05)",
         line=dict(width=0),
         layer="below",
     )
 
-    # Lignes médianes
+    # Lignes médianes using border color
     fig.add_shape(
         type="line",
         x0=x_med,
         x1=x_med,
         y0=y.min(),
         y1=y.max(),
-        line=dict(color="rgba(107, 114, 128, 0.3)", width=2, dash="dot"),
+        line=dict(color=chart_colors["text_muted"], width=2, dash="dot"),
     )
     fig.add_shape(
         type="line",
@@ -909,10 +978,10 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
         x1=x.max(),
         y0=y_med,
         y1=y_med,
-        line=dict(color="rgba(107, 114, 128, 0.3)", width=2, dash="dot"),
+        line=dict(color=chart_colors["text_muted"], width=2, dash="dot"),
     )
 
-    # Points
+    # Points with brand colorscale
     fig.add_trace(
         go.Scatter(
             x=d["dsat_sans"],
@@ -922,20 +991,20 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
                 size=d["vol_note"] / d["vol_note"].max() * 40 + 10,
                 color=d["dsat_sans"],
                 colorscale=[
-                    [0, COLORS["danger"]],
-                    [0.5, COLORS["warning"]],
-                    [1, COLORS["success"]],
+                    [0, BRAND_COLORS["negative"]],     # Raspberry for low DSAT (bad)
+                    [0.5, BRAND_COLORS["warning"]],    # Gold for mid
+                    [1, BRAND_COLORS["positive"]],     # Teal for high DSAT (good)
                 ],
                 line=dict(width=2, color="white"),
                 showscale=True,
-                colorbar=dict(title="DSAT<br>sans récla", thickness=15, len=0.7),
+                colorbar=dict(title="DSAT<br>hors récla", thickness=15, len=0.7),
             ),
             text=d["label"],
             textposition="top center",
-            textfont=dict(size=9),
+            textfont=dict(size=9, color=chart_colors["text_color"]),
             hovertemplate=(
                 "<b>%{text}</b><br>"
-                "DSAT sans récla: %{x:.2f}<br>"
+                "DSAT hors récla: %{x:.2f}<br>"
                 "Volume: %{y:,.0f}<br>"
                 "Vol. noté: %{customdata:,.0f}<extra></extra>"
             ),
@@ -948,21 +1017,22 @@ def build_fig_quadrants(df_agg: pd.DataFrame):
         margin=dict(l=10, r=10, t=10, b=10),
         height=640,
         xaxis=dict(
-            title="DSAT sans récla",
+            title="DSAT hors récla",
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)",
+            gridcolor=chart_colors["gridcolor"],
             zeroline=True,
-            zerolinecolor="rgba(0,0,0,0.2)",
+            zerolinecolor=chart_colors["border"],
         ),
         yaxis=dict(
             title="Volume brut",
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)",
+            gridcolor=chart_colors["gridcolor"],
         ),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color=chart_colors["text_color"],
         ),
     )
     return fig
@@ -980,7 +1050,13 @@ def build_fig_heatmap(
 ):
     """
     Heatmap d'évolution par label sur plusieurs périodes.
+
+    Brand colors:
+    - Colorscale: Raspberry (low/bad) -> Gold (mid) -> Teal (high/good)
+    - Text labels adapt based on background luminance for readability
     """
+    chart_colors = get_chart_colors("light")
+
     # Construction de la liste de périodes
     periods = []
     y, m = year, month
@@ -1030,16 +1106,13 @@ def build_fig_heatmap(
     mat = mat.loc[top_labels, ordered_cols]
 
     metric_label = {
-        "dsat_sans": "DSAT sans récla",
-        "delta": "Δ (sans - total)",
-        "dsat_total": "DSAT total",
+        "dsat_sans": "DSAT hors récla",
+        "delta": "Δ (hors - récla)",
+        "dsat_total": "DSAT récla",
     }.get(metric, metric)
 
-    colorscale = [
-        [0, COLORS["danger"]],
-        [0.5, "#fef3c7"],
-        [1, COLORS["success"]],
-    ]
+    # Brand colorscale: Raspberry -> Gold -> Teal
+    colorscale = get_heatmap_colorscale(metric)
 
     fig = go.Figure(
         go.Heatmap(
@@ -1048,7 +1121,7 @@ def build_fig_heatmap(
             y=mat.index.tolist(),
             text=np.round(mat.values, 2),
             texttemplate="%{text:.2f}",
-            textfont=dict(color="#111827", size=11),
+            textfont=dict(color=chart_colors["text_primary"], size=11),
             colorscale=colorscale,
             zmid=0.0 if metric in ("dsat_sans", "delta") else None,
             hoverongaps=False,
@@ -1060,12 +1133,20 @@ def build_fig_heatmap(
     fig.update_layout(
         margin=dict(l=10, r=10, t=40, b=10),
         height=max(300, top_n * 40),
-        xaxis=dict(side="top", tickangle=-45, tickfont=dict(size=10)),
-        yaxis=dict(autorange="reversed", tickfont=dict(size=10)),
+        xaxis=dict(
+            side="top",
+            tickangle=-45,
+            tickfont=dict(size=10, color=chart_colors["text_muted"])
+        ),
+        yaxis=dict(
+            autorange="reversed",
+            tickfont=dict(size=10, color=chart_colors["text_muted"])
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor=chart_colors["plot_bgcolor"],
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color=chart_colors["text_color"],
         ),
         hovermode="x unified",
     )
@@ -1092,25 +1173,50 @@ def build_grid_style(visible: bool = True):
 
 
 def build_pie_composition_figure(agg: pd.DataFrame, groupby: str):
-    """Construit le camembert de répartition des volumes."""
+    """
+    Construit le camembert de répartition des volumes.
+
+    Uses brand color sequence for consistency.
+    """
+    chart_colors = get_chart_colors("light")
+
+    # Brand color sequence for pie slices
+    brand_sequence = [
+        BRAND_COLORS["primary"],      # Orange
+        BRAND_COLORS["positive"],     # Teal
+        BRAND_COLORS["negative"],     # Raspberry
+        BRAND_COLORS["warning"],      # Gold
+        BRAND_COLORS["secondary"],    # Lavender
+        "#8B9AAF",                     # Muted blue-gray
+        "#D4A574",                     # Muted tan
+        "#9BC1BC",                     # Muted sage
+        "#C9A7C7",                     # Muted mauve
+        "#A8C686",                     # Muted lime
+    ]
+
     fig = px.pie(
         agg,
         names="label",
         values="vol_brut",
         title=f"Répartition des volumes par {groupby}",
         hole=0.35,
-        color_discrete_sequence=px.colors.qualitative.G10,
+        color_discrete_sequence=brand_sequence,
     )
     fig.update_traces(
         hovertemplate="%{label}<br>%{value:,.0f} cas (%{percent})<extra></extra>",
         textposition="inside",
         texttemplate="%{percent:.1%}",
+        textfont=dict(color="white"),
     )
     fig.update_layout(
         height=420,
         margin=dict(l=10, r=10, t=40, b=10),
         showlegend=False,
         paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(
+            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color=chart_colors["text_color"],
+        ),
     )
     return fig
 
